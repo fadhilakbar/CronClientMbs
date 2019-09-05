@@ -390,7 +390,8 @@ func PostMessageEmail(Email string, Subject string, Content string, id int) int 
 			bodyString := string(bodyBytes)
 			var objmap map[string]string
 			if err := json.Unmarshal([]byte(bodyString), &objmap); err != nil {
-				panic(err)
+				functions.Logger().Error(err.Error())
+				return 0
 			}
 			if (objmap["response_code"]) == "00" {
 				stmt, err := conn.Prepare("UPDATE outbox_email SET STATUS=1 where chat_id=?")

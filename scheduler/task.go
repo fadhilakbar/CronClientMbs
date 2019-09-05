@@ -4,13 +4,10 @@ import (
 	"CronClientMbs/database"
 	"CronClientMbs/functions"
 	"encoding/json"
-	"fmt"
 	"github.com/leekchan/accounting"
 	"github.com/parnurzeal/gorequest"
 	_ "github.com/shopspring/decimal"
-	"gopkg.in/gomail.v2"
 	"io/ioutil"
-	"log"
 	_ "math/big"
 	"net/http"
 	"os"
@@ -265,7 +262,7 @@ func CekOutboxWA() {
 	}
 	defer database.ConnectDB().Close()
 	for rows.Next() {
-		functions.Logger().Info("Starting Send Message to WABLAS")
+		functions.Logger().Info("Starting Send Message to API")
 		messageList := SelectMessage{}
 		err = rows.Scan(&messageList.MessageId, &messageList.MessageNumber, &messageList.MessageText, &messageList.MessageStatus)
 		if err != nil {
@@ -306,55 +303,8 @@ func CekOutboxEmail() {
 		} else {
 			functions.Logger().Info("Failed Send Email to API " + strconv.Itoa(messageList.MessageId) + "")
 		}
-		//SendMessageWA(messageList.MessageNumber,messageList.MessageText,messageList.MessageId);
 	}
 	rows.Close()
-}
-
-func sendMail(to string, subject string, message string, id int) {
-	emailfrom := ""
-	emailfrom = GetFValueByFKeyValue("config", "config_name", "email_lembaga", "config_value")
-	cPort := "587"
-	cPort = GetFValueByFKeyValue("config", "config_name", "email_smtp_port", "config_value")
-	cHost := "BERSAMA KITA MAJU"
-	cHost = GetFValueByFKeyValue("config", "config_name", "email_smtp_host", "config_value")
-	emailPass := ""
-	emailPass = GetFValueByFKeyValue("config", "config_name", "email_pass_lembaga", "config_value")
-
-	mailer := gomail.NewMessage()
-	mailer.SetHeader("From", emailfrom)
-	mailer.SetHeader("To", to)
-	mailer.SetHeader("Subject", subject)
-	mailer.SetBody("text/html", message)
-	port, _ := strconv.Atoi(cPort)
-	dialer := gomail.NewDialer(
-		cHost,
-		port,
-		emailfrom,
-		emailPass,
-	)
-
-	err := dialer.DialAndSend(mailer)
-	if err != nil {
-		functions.Logger().Error(err.Error())
-		return
-	}
-
-	stmt, err := conn.Prepare("UPDATE outbox_email SET STATUS=1 where chat_id=?")
-	if err != nil {
-		functions.Logger().Error(err.Error())
-		return
-	}
-	defer stmt.Close()
-	_, err = stmt.Exec(id)
-	if err != nil {
-		functions.Logger().Error(err.Error())
-		return
-	} else {
-		functions.Logger().Info("Successfully UpdateStatus")
-	}
-	log.Println("Mail sent!")
-
 }
 
 func GetFValueByFKeyValue(Table string, FieldKey string, FieldKeyValue string, FieldTarget string) string {
@@ -377,49 +327,16 @@ func GetFValueByFKeyValue(Table string, FieldKey string, FieldKeyValue string, F
 
 }
 
-func SendMessageWA(Hp string, Pesan string, Id int) {
-	functions.Logger().Info("Starting Send Message to WABLAS")
-	b := map[string]string{"phone": Hp, "message": Pesan}
-	request := gorequest.New()
-	resp, _, _ := request.Post("https://wablas.com/api/send-message").
-		Set("Content-Type", "application/json").
-		Set("Authorization", GetFValueByFKeyValue("config", "config_name", "token_wa", "config_value")).
-		Send(b).
-		End()
-	fmt.Println(resp.Body)
-	if resp.StatusCode == http.StatusOK {
-		stmt, err := conn.Prepare("UPDATE outbox SET STATUS=1 where chat_id=?")
-		if err != nil {
-			functions.Logger().Error(err.Error())
-			return
-		}
-		defer stmt.Close()
-		_, err = stmt.Exec(Id)
-		if err != nil {
-			functions.Logger().Error(err.Error())
-			return
-		} else {
-			functions.Logger().Info("Successfully UpdateStatus")
-		}
-
-		functions.Logger().Info("Successfully Send Message to WABLAS")
-	} else {
-		functions.Logger().Error("An Error Occured")
-	}
-
-}
-
 func PostMessageWA(Hp string, Pesan string, Id int) int {
 	functions.Logger().Info("Starting Send Message to API")
 	b := map[string]string{"phone": Hp, "message": Pesan}
 	request := gorequest.New()
-	resp, _, err := request.Post(os.Getenv("URL_API")+"/InsertOutbox").
+	resp, _, _ := request.Post(os.Getenv("URL_API")+"/InsertOutbox").
 		Set("Content-Type", "application/json").
 		Send(b).
 		End()
-	if err != nil {
+	if resp != nil {
 		if resp.StatusCode == http.StatusOK {
-			//s := string(`{"response_code": "00", "response_message": "example"}`)
 			bodyBytes, _ := ioutil.ReadAll(resp.Body)
 			bodyString := string(bodyBytes)
 			var objmap map[string]string
@@ -439,7 +356,6 @@ func PostMessageWA(Hp string, Pesan string, Id int) int {
 					return 0
 				} else {
 					functions.Logger().Info("Successfully UpdateStatus")
-					return 1
 				}
 
 				functions.Logger().Info("Successfully Send Message to API")
@@ -464,13 +380,12 @@ func PostMessageEmail(Email string, Subject string, Content string, id int) int 
 	functions.Logger().Info("Starting Send Message to API")
 	b := map[string]string{"email": Email, "subject": Subject, "content": Content}
 	request := gorequest.New()
-	resp, _, err := request.Post(os.Getenv("URL_API")+"/InsertOutboxMail").
+	resp, _, _ := request.Post(os.Getenv("URL_API")+"/InsertOutboxMail").
 		Set("Content-Type", "application/json").
 		Send(b).
 		End()
-	if err != nil {
+	if resp != nil {
 		if resp.StatusCode == http.StatusOK {
-			//s := string(`{"response_code": "00", "response_message": "example"}`)
 			bodyBytes, _ := ioutil.ReadAll(resp.Body)
 			bodyString := string(bodyBytes)
 			var objmap map[string]string
@@ -490,7 +405,6 @@ func PostMessageEmail(Email string, Subject string, Content string, id int) int 
 					return 0
 				} else {
 					functions.Logger().Info("Successfully UpdateStatus")
-					return 1
 				}
 
 				functions.Logger().Info("Successfully Send Message to API")
